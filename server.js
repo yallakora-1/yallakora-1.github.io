@@ -40,8 +40,11 @@ function priorityForLeague(league) {
   return null;
 }
 function normalizeFixture(x) {
-  const p = priorityForLeague(x.league);
-  if (!p) return null;
+  const p = priorityForLeague(x.league) || {
+    key: String(x.league?.country || 'world').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'world',
+    ar: x.league?.name || 'بطولة',
+    flag: x.league?.flag || '⚽'
+  };
   return {
     id: x.fixture?.id,
     date: x.fixture?.date,
@@ -124,6 +127,21 @@ app.get('/api/matches', async (req, res) => {
       source: 'API-Football'
     };
     cacheSet(key, payload, 5 * 60 * 1000);
+    res.json(payload);
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message || 'API error' });
+  }
+});
+
+app.get('/api/live', async (req, res) => {
+  try {
+    const key = 'live:all';
+    const cached = cacheGet(key);
+    if (cached) return res.json(cached);
+    const data = await apiFetch('/fixtures', { live: 'all' });
+    const matches = (data.response || []).map(normalizeFixture).filter(Boolean);
+    const payload = { results: matches.length, response: matches, source: 'API-Football' };
+    cacheSet(key, payload, 20 * 60 * 1000);
     res.json(payload);
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message || 'API error' });
@@ -214,6 +232,10 @@ app.get('/api/team/:id', async (req, res) => {
 app.use(express.static(__dirname));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Yalla Kora running on port ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Yalla Kora running on port ${PORT}`);
+  });
+}
+
+module.exports = app;
